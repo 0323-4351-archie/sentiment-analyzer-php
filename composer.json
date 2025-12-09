@@ -1,5 +1,6 @@
 {
     "require": {
-        "davmixcool/php-sentiment-analyzer": "^1.2"
+        "davmixcool/php-sentiment-analyzer": "^1.2",
+        "stichoza/google-translate-php": "^5.3"
     }
 }
