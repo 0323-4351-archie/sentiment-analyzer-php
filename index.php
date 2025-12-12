@@ -6,78 +6,71 @@ require_once __DIR__ . '/vendor/autoload.php';
 use Sentiment\Analyzer;
 use Stichoza\GoogleTranslate\GoogleTranslate;
 
-$result = null;
-$text = "";
-$translated_text = "";
-$detected_language = "";
-$target_lang_name = "";
+// Initialize variables
+$student_name = "";
+$text_behavior = "";
+$text_teaching = "";
+$result_behavior = null;
+$result_teaching = null;
+
+// Helper function to process text
+function processFeedback($text) {
+    if (empty($text)) return null;
+
+    $tr = new GoogleTranslate();
+    $analyzer = new Analyzer();
+    
+    try {
+        // 1. Detect Language
+        // We use a trick: Translate to English. If it stays the same, it was already English.
+        $english_version = $tr->setSource(null)->setTarget('en')->translate($text);
+        $detected_lang = $tr->getLastDetectedSource(); // Get code like 'en', 'tl'
+        
+        // 2. Intelligent Translation Logic
+        $display_translation = "";
+        $analysis_text = "";
+        
+        // Check if input is English (or close to it)
+        if ($detected_lang == 'en' || $text == $english_version) {
+            // INPUT: ENGLISH
+            // ACTION: Translate to TAGALOG for display
+            $display_translation = $tr->setSource('en')->setTarget('tl')->translate($text);
+            $analysis_text = $text; // Analyze the original English
+        } else {
+            // INPUT: TAGALOG (or others)
+            // ACTION: Translate to ENGLISH for display & analysis
+            $display_translation = $english_version;
+            $analysis_text = $english_version;
+        }
+
+        // 3. Analyze Sentiment (Always use English version)
+        $analysis = $analyzer->getSentiment($analysis_text);
+        
+        // Get Dominant Category
+        $scores = ['Positive' => $analysis['pos'], 'Negative' => $analysis['neg'], 'Neutral' => $analysis['neu']];
+        $dominant = array_keys($scores, max($scores))[0];
+
+        return [
+            'original' => $text,
+            'translated' => $display_translation,
+            'category' => $dominant,
+            'scores' => $analysis
+        ];
+
+    } catch (Exception $e) {
+        return null; // Fail silently if internet is down
+    }
+}
 
 // 3. Process Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $text = trim($_POST['feedback_text']);
-    
-    if (!empty($text)) {
-        try {
-            // --- NEW: TRANSLATION LOGIC ---
-            $tr = new GoogleTranslate(); // Initialize Translator
-            
-            // 1. Detect the Language (Is it 'en', 'tl', etc.?)
-            // We temporarily translate to English to see what language it was
-            $english_version = $tr->setSource(null)->setTarget('en')->translate($text);
-            $detected_language = $tr->getLastDetectedSource(); // Get the code (e.g., 'tl', 'en')
+    $student_name = htmlspecialchars($_POST['student_name']);
+    $text_behavior = $_POST['behavior_feedback'];
+    $text_teaching = $_POST['teaching_feedback'];
 
-            // 2. Handle Translation Logic based on your request
-            // Check if it's English (or very close to it)
-            if ($detected_language === 'en' || str_starts_with($detected_language, 'en')) {
-                // If input is English -> Translate to Tagalog for display
-                $display_translation = $tr->setSource('en')->setTarget('tl')->translate($text);
-                $text_to_analyze = $text; // Analyze the original English
-                $target_lang_name = "Tagalog";
-                $detected_language = "English"; // Set nice name for display
-            } else {
-                // If input is Tagalog (or other) -> Translate to English for Analysis
-                $display_translation = $english_version; // Show the English version
-                $text_to_analyze = $english_version; // Analyze the English version
-                $target_lang_name = "English";
-                 // If it detected 'tl', make it look nicer
-                 if ($detected_language === 'tl') { $detected_language = "Tagalog"; }
-            }
-
-            $translated_text = $display_translation;
-
-            // --- SENTIMENT ANALYSIS (Always analyzes English text) ---
-            $analyzer = new Analyzer();
-            $analysis = $analyzer->getSentiment($text_to_analyze);
-            
-            $scores = [
-                'Positive' => $analysis['pos'],
-                'Negative' => $analysis['neg'],
-                'Neutral'  => $analysis['neu']
-            ];
-            
-            $dominant = array_keys($scores, max($scores))[0];
-            $result = [
-                'category' => $dominant,
-                'scores' => $analysis
-            ];
-
-        } catch (Exception $e) {
-            // If translation fails (no internet/API issue), fallback to analyzing original text
-            // This prevents the site from crashing if Google is down
-            try {
-                $analyzer = new Analyzer();
-                $analysis = $analyzer->getSentiment($text);
-                $scores = ['Positive' => $analysis['pos'], 'Negative' => $analysis['neg'], 'Neutral'  => $analysis['neu']];
-                $dominant = array_keys($scores, max($scores))[0];
-                $result = ['category' => $dominant, 'scores' => $analysis];
-                $translated_text = "Translation unavailable - Analyzing original text.";
-                $detected_language = "Unknown";
-                $target_lang_name = "N/A";
-            } catch (Exception $e2) {
-                 $text = "Error analyzing text.";
-            }
-        }
-    }
+    // Analyze both inputs separately
+    $result_behavior = processFeedback($text_behavior);
+    $result_teaching = processFeedback($text_teaching);
 }
 ?>
 
@@ -86,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SentimentAI - Multilingual Analyzer</title>
+    <title>SentimentAI - Comprehensive Analysis</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
@@ -97,17 +90,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-family: 'Poppins', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            padding: 40px 0;
             color: #333;
         }
         .main-card {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.98);
             border-radius: 20px;
             box-shadow: 0 15px 35px rgba(0,0,0,0.2);
             border: none;
             overflow: hidden;
+            margin-bottom: 30px;
         }
         .header-section {
             background-color: #f8f9fa;
@@ -116,125 +108,138 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-align: center;
         }
         .header-icon { font-size: 3rem; color: #764ba2; }
-        .form-section { padding: 30px; }
-        textarea {
-            resize: none;
-            border-radius: 10px !important;
-            border: 2px solid #e9ecef !important;
-            transition: all 0.3s;
-        }
-        textarea:focus {
-            border-color: #764ba2 !important;
-            box-shadow: 0 0 10px rgba(118, 75, 162, 0.1) !important;
-        }
+        
+        .form-label { font-weight: 600; color: #555; font-size: 0.9rem; text-transform: uppercase; }
+        .form-control:focus { border-color: #764ba2; box-shadow: 0 0 0 0.2rem rgba(118, 75, 162, 0.25); }
+        
         .btn-analyze {
             background: linear-gradient(to right, #667eea, #764ba2);
             border: none;
-            border-radius: 10px;
-            padding: 12px;
+            padding: 15px;
+            font-size: 1.1rem;
             font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            border-radius: 12px;
+            transition: all 0.3s;
+        }
+        .btn-analyze:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); }
+
+        /* Result Cards */
+        .result-card {
+            border-radius: 15px;
+            border: 1px solid #eee;
+            padding: 20px;
+            height: 100%;
+            background: #fff;
             transition: transform 0.2s;
         }
-        .btn-analyze:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(118, 75, 162, 0.3);
-        }
-        .result-container {
-            background-color: #fff;
-            padding: 25px;
-            border-radius: 15px;
-            margin-top: 20px;
-            border: 1px solid #eee;
-        }
-        .translation-box {
-            background-color: #e2e3e5;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            border-left: 5px solid #764ba2;
-        }
-        /* Dynamic Colors */
-        .border-Positive { border-left: 5px solid #28a745; background-color: #f0fff4; }
-        .border-Negative { border-left: 5px solid #dc3545; background-color: #fff5f5; }
-        .border-Neutral { border-left: 5px solid #6c757d; background-color: #f8f9fa; }
+        .result-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.05); }
+        
+        .border-Positive { border-top: 5px solid #28a745; }
+        .border-Negative { border-top: 5px solid #dc3545; }
+        .border-Neutral { border-top: 5px solid #6c757d; }
+        
         .text-Positive { color: #28a745; }
         .text-Negative { color: #dc3545; }
         .text-Neutral { color: #6c757d; }
-        .progress { height: 10px; border-radius: 5px; margin-bottom: 15px; background-color: #e9ecef; }
-        .score-label { font-size: 0.85rem; font-weight: 600; display: flex; justify-content: space-between; margin-bottom: 5px; }
+        
+        .progress { height: 8px; margin-bottom: 10px; }
+        .score-label { font-size: 0.75rem; font-weight: 600; display: flex; justify-content: space-between; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="row justify-content-center">
-        <div class="col-lg-6 col-md-8">
+        <div class="col-lg-8">
+            
             <div class="card main-card">
-                
                 <div class="header-section">
-    <i class="bi bi-robot header-icon"></i>
-    <h2 class="mt-3 fw-bold">Sentiment AI</h2>
-    <p class="text-muted mb-0">Project Option A: Student Feedback Sentiment Analyzer</p>
+                    <i class="bi bi-robot header-icon"></i>
+                    <h2 class="mt-3 fw-bold">Student Feedback AI</h2>
+                    <p class="text-muted mb-0">Project Option A: Student Feedback Sentiment Analyzer</p>
                 </div>
-
-                <div class="form-section">
+                
+                <div class="card-body p-4">
                     <form method="POST" action="">
+                        
                         <div class="mb-4">
-                            <label for="feedback" class="form-label text-uppercase fw-bold text-muted" style="font-size: 0.8rem;">Input Text (English or Tagalog)</label>
-                            <textarea class="form-control" name="feedback_text" id="feedback" rows="4" placeholder="Type here... (e.g., 'Magandang araw' or 'Good day')" required><?php echo htmlspecialchars($text); ?></textarea>
+                            <label class="form-label">Student Name (Optional)</label>
+                            <input type="text" class="form-control" name="student_name" placeholder="Enter your name..." value="<?php echo $student_name; ?>">
                         </div>
-                        <div class="d-grid">
-                            <button type="submit" class="btn btn-primary btn-analyze">
-                                <i class="bi bi-magic"></i> Translate & Analyze
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label text-primary"><i class="bi bi-person-heart"></i> Teacher's Behavior</label>
+                                <textarea class="form-control" name="behavior_feedback" rows="4" placeholder="How does the teacher treat students? (e.g., Kind, Strict, Angry)" required><?php echo htmlspecialchars($text_behavior); ?></textarea>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label text-success"><i class="bi bi-book"></i> Teaching Method</label>
+                                <textarea class="form-control" name="teaching_feedback" rows="4" placeholder="How well do they teach the subject? (e.g., Clear, Confusing, Fast)" required><?php echo htmlspecialchars($text_teaching); ?></textarea>
+                            </div>
+                        </div>
+
+                        <div class="d-grid mt-3">
+                            <button type="submit" class="btn btn-primary btn-analyze text-white">
+                                <i class="bi bi-stars"></i> Analyze Both Feedbacks
                             </button>
                         </div>
                     </form>
-
-                    <?php if ($result): ?>
-                        <div class="result-container border-<?php echo $result['category']; ?> fade-in">
-                            
-                            <?php if (!empty($translated_text) && $translated_text !== "Translation unavailable - Analyzing original text."): ?>
-                            <div class="translation-box">
-                                <small class="text-uppercase fw-bold text-muted">Detected: <?php echo strtoupper(htmlspecialchars($detected_language)); ?> <i class="bi bi-arrow-right"></i> <?php echo htmlspecialchars($target_lang_name); ?></small>
-                                <p class="mb-0 mt-1 fst-italic">"<?php echo htmlspecialchars($translated_text); ?>"</p>
-                            </div>
-                            <?php endif; ?>
-
-                            <div class="text-center mb-4">
-                                <h6 class="text-muted text-uppercase mb-1">Detected Tone</h6>
-                                <h2 class="fw-bold text-<?php echo $result['category']; ?>">
-                                    <?php 
-                                        if($result['category'] == 'Positive') echo '<i class="bi bi-emoji-smile-fill"></i> Positive';
-                                        elseif($result['category'] == 'Negative') echo '<i class="bi bi-emoji-frown-fill"></i> Negative';
-                                        else echo '<i class="bi bi-emoji-neutral-fill"></i> Neutral';
-                                    ?>
-                                </h2>
-                            </div>
-
-                            <hr class="opacity-25">
-
-                            <div class="mt-3">
-                                <div class="score-label"><span>Positive</span><span><?php echo round($result['scores']['pos'] * 100); ?>%</span></div>
-                                <div class="progress"><div class="progress-bar bg-success" role="progressbar" style="width: <?php echo $result['scores']['pos'] * 100; ?>%"></div></div>
-
-                                <div class="score-label"><span>Neutral</span><span><?php echo round($result['scores']['neu'] * 100); ?>%</span></div>
-                                <div class="progress"><div class="progress-bar bg-secondary" role="progressbar" style="width: <?php echo $result['scores']['neu'] * 100; ?>%"></div></div>
-
-                                <div class="score-label"><span>Negative</span><span><?php echo round($result['scores']['neg'] * 100); ?>%</span></div>
-                                <div class="progress"><div class="progress-bar bg-danger" role="progressbar" style="width: <?php echo $result['scores']['neg'] * 100; ?>%"></div></div>
-                            </div>
-
-                        </div>
-                    <?php endif; ?>
-                    
                 </div>
             </div>
-            
-            <div class="text-center mt-3 text-white opacity-75">
-                <small>&copy; <?php echo date('Y'); ?> Student Feedback Analyzer Project</small>
-            </div>
+
+            <?php if ($result_behavior && $result_teaching): ?>
+                <div class="row fade-in">
+                    <div class="col-12 mb-3 text-center">
+                        <h4 class="fw-bold text-white">Analysis Results for: <u><?php echo !empty($student_name) ? $student_name : "Anonymous Student"; ?></u></h4>
+                    </div>
+
+                    <div class="col-md-6 mb-4">
+                        <div class="result-card border-<?php echo $result_behavior['category']; ?>">
+                            <h5 class="text-center text-muted text-uppercase mb-3"><i class="bi bi-person-heart"></i> Behavior Analysis</h5>
+                            
+                            <div class="text-center mb-3">
+                                <h2 class="fw-bold text-<?php echo $result_behavior['category']; ?>">
+                                    <?php echo $result_behavior['category']; ?>
+                                </h2>
+                                <small class="text-muted fst-italic">"<?php echo htmlspecialchars($result_behavior['translated']); ?>"</small>
+                            </div>
+
+                            <div class="score-label"><span>Positive</span><span><?php echo number_format($result_behavior['scores']['pos'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-success" style="width: <?php echo $result_behavior['scores']['pos'] * 100; ?>%"></div></div>
+                            
+                            <div class="score-label"><span>Neutral</span><span><?php echo number_format($result_behavior['scores']['neu'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-secondary" style="width: <?php echo $result_behavior['scores']['neu'] * 100; ?>%"></div></div>
+
+                            <div class="score-label"><span>Negative</span><span><?php echo number_format($result_behavior['scores']['neg'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-danger" style="width: <?php echo $result_behavior['scores']['neg'] * 100; ?>%"></div></div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6 mb-4">
+                        <div class="result-card border-<?php echo $result_teaching['category']; ?>">
+                            <h5 class="text-center text-muted text-uppercase mb-3"><i class="bi bi-book"></i> Teaching Analysis</h5>
+                            
+                            <div class="text-center mb-3">
+                                <h2 class="fw-bold text-<?php echo $result_teaching['category']; ?>">
+                                    <?php echo $result_teaching['category']; ?>
+                                </h2>
+                                <small class="text-muted fst-italic">"<?php echo htmlspecialchars($result_teaching['translated']); ?>"</small>
+                            </div>
+
+                            <div class="score-label"><span>Positive</span><span><?php echo number_format($result_teaching['scores']['pos'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-success" style="width: <?php echo $result_teaching['scores']['pos'] * 100; ?>%"></div></div>
+                            
+                            <div class="score-label"><span>Neutral</span><span><?php echo number_format($result_teaching['scores']['neu'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-secondary" style="width: <?php echo $result_teaching['scores']['neu'] * 100; ?>%"></div></div>
+
+                            <div class="score-label"><span>Negative</span><span><?php echo number_format($result_teaching['scores']['neg'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-danger" style="width: <?php echo $result_teaching['scores']['neg'] * 100; ?>%"></div></div>
+                        </div>
+                    </div>
+
+                </div>
+            <?php endif; ?>
 
         </div>
     </div>
