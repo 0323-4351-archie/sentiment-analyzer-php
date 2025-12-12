@@ -21,44 +21,67 @@ function processFeedback($text) {
     $analyzer = new Analyzer();
     
     try {
-        // 1. Detect Language
-        // We use a trick: Translate to English. If it stays the same, it was already English.
+        // 1. Detect Language & Translate if needed
         $english_version = $tr->setSource(null)->setTarget('en')->translate($text);
-        $detected_lang = $tr->getLastDetectedSource(); // Get code like 'en', 'tl'
+        $detected_lang = $tr->getLastDetectedSource(); 
         
-        // 2. Intelligent Translation Logic
         $display_translation = "";
         $analysis_text = "";
         
-        // Check if input is English (or close to it)
+        // Check if input is English
         if ($detected_lang == 'en' || $text == $english_version) {
-            // INPUT: ENGLISH
-            // ACTION: Translate to TAGALOG for display
             $display_translation = $tr->setSource('en')->setTarget('tl')->translate($text);
-            $analysis_text = $text; // Analyze the original English
+            $analysis_text = $text; 
         } else {
-            // INPUT: TAGALOG (or others)
-            // ACTION: Translate to ENGLISH for display & analysis
             $display_translation = $english_version;
             $analysis_text = $english_version;
         }
 
-        // 3. Analyze Sentiment (Always use English version)
+        // 2. Analyze Sentiment
         $analysis = $analyzer->getSentiment($analysis_text);
         
-        // Get Dominant Category
-        $scores = ['Positive' => $analysis['pos'], 'Negative' => $analysis['neg'], 'Neutral' => $analysis['neu']];
-        $dominant = array_keys($scores, max($scores))[0];
+        // --- NEW: SENTIMENT BOOSTER LOGIC ---
+        // This math reduces "Neutral" if there is a strong emotion detected.
+        $pos = $analysis['pos'];
+        $neg = $analysis['neg'];
+        $neu = $analysis['neu'];
+        $compound = $analysis['compound']; // Overall score (-1 to 1)
+
+        // If the text is clearly emotional (compound score is not 0), boost the scores
+        if (abs($compound) > 0.05) {
+            // Take 60% of the Neutral score and give it to the dominant emotion
+            $boost_amount = $neu * 0.60; 
+            
+            if ($neg > $pos) {
+                // If it's mostly negative, give the boost to Negative
+                $neg += $boost_amount;
+                $neu -= $boost_amount;
+            } elseif ($pos > $neg) {
+                // If it's mostly positive, give the boost to Positive
+                $pos += $boost_amount;
+                $neu -= $boost_amount;
+            }
+        }
+        // -------------------------------------
+
+        // Update the scores array for display
+        $scores = ['Positive' => $pos, 'Negative' => $neg, 'Neutral' => $neu];
+        
+        // Determine Dominant Category safely
+        $dominant = 'Neutral';
+        if ($pos > $neg && $pos > $neu) $dominant = 'Positive';
+        elseif ($neg > $pos && $neg > $neu) $dominant = 'Negative';
+        else $dominant = 'Neutral';
 
         return [
             'original' => $text,
             'translated' => $display_translation,
             'category' => $dominant,
-            'scores' => $analysis
+            'scores' => $scores
         ];
 
     } catch (Exception $e) {
-        return null; // Fail silently if internet is down
+        return null; 
     }
 }
 
@@ -68,7 +91,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $text_behavior = $_POST['behavior_feedback'];
     $text_teaching = $_POST['teaching_feedback'];
 
-    // Analyze both inputs separately
     $result_behavior = processFeedback($text_behavior);
     $result_teaching = processFeedback($text_teaching);
 }
@@ -205,14 +227,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <small class="text-muted fst-italic">"<?php echo htmlspecialchars($result_behavior['translated']); ?>"</small>
                             </div>
 
-                            <div class="score-label"><span>Positive</span><span><?php echo number_format($result_behavior['scores']['pos'] * 100, 1); ?>%</span></div>
-                            <div class="progress"><div class="progress-bar bg-success" style="width: <?php echo $result_behavior['scores']['pos'] * 100; ?>%"></div></div>
+                            <div class="score-label"><span>Positive</span><span><?php echo number_format($result_behavior['scores']['Positive'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-success" style="width: <?php echo $result_behavior['scores']['Positive'] * 100; ?>%"></div></div>
                             
-                            <div class="score-label"><span>Neutral</span><span><?php echo number_format($result_behavior['scores']['neu'] * 100, 1); ?>%</span></div>
-                            <div class="progress"><div class="progress-bar bg-secondary" style="width: <?php echo $result_behavior['scores']['neu'] * 100; ?>%"></div></div>
+                            <div class="score-label"><span>Neutral</span><span><?php echo number_format($result_behavior['scores']['Neutral'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-secondary" style="width: <?php echo $result_behavior['scores']['Neutral'] * 100; ?>%"></div></div>
 
-                            <div class="score-label"><span>Negative</span><span><?php echo number_format($result_behavior['scores']['neg'] * 100, 1); ?>%</span></div>
-                            <div class="progress"><div class="progress-bar bg-danger" style="width: <?php echo $result_behavior['scores']['neg'] * 100; ?>%"></div></div>
+                            <div class="score-label"><span>Negative</span><span><?php echo number_format($result_behavior['scores']['Negative'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-danger" style="width: <?php echo $result_behavior['scores']['Negative'] * 100; ?>%"></div></div>
                         </div>
                     </div>
 
@@ -227,14 +249,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <small class="text-muted fst-italic">"<?php echo htmlspecialchars($result_teaching['translated']); ?>"</small>
                             </div>
 
-                            <div class="score-label"><span>Positive</span><span><?php echo number_format($result_teaching['scores']['pos'] * 100, 1); ?>%</span></div>
-                            <div class="progress"><div class="progress-bar bg-success" style="width: <?php echo $result_teaching['scores']['pos'] * 100; ?>%"></div></div>
+                            <div class="score-label"><span>Positive</span><span><?php echo number_format($result_teaching['scores']['Positive'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-success" style="width: <?php echo $result_teaching['scores']['Positive'] * 100; ?>%"></div></div>
                             
-                            <div class="score-label"><span>Neutral</span><span><?php echo number_format($result_teaching['scores']['neu'] * 100, 1); ?>%</span></div>
-                            <div class="progress"><div class="progress-bar bg-secondary" style="width: <?php echo $result_teaching['scores']['neu'] * 100; ?>%"></div></div>
+                            <div class="score-label"><span>Neutral</span><span><?php echo number_format($result_teaching['scores']['Neutral'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-secondary" style="width: <?php echo $result_teaching['scores']['Neutral'] * 100; ?>%"></div></div>
 
-                            <div class="score-label"><span>Negative</span><span><?php echo number_format($result_teaching['scores']['neg'] * 100, 1); ?>%</span></div>
-                            <div class="progress"><div class="progress-bar bg-danger" style="width: <?php echo $result_teaching['scores']['neg'] * 100; ?>%"></div></div>
+                            <div class="score-label"><span>Negative</span><span><?php echo number_format($result_teaching['scores']['Negative'] * 100, 1); ?>%</span></div>
+                            <div class="progress"><div class="progress-bar bg-danger" style="width: <?php echo $result_teaching['scores']['Negative'] * 100; ?>%"></div></div>
                         </div>
                     </div>
 
