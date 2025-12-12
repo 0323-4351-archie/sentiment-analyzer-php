@@ -174,9 +174,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="card main-card">
                 
                 <div class="header-section">
-                    <i class="bi bi-robot header-icon"></i>
-                    <h2 class="mt-3 fw-bold">Sentiment AI</h2>
-                    <p class="text-muted mb-0">Multilingual Support (English <-> Tagalog)</p>
+    <i class="bi bi-robot header-icon"></i>
+    <h2 class="mt-3 fw-bold">Sentiment AI</h2>
+    <p class="text-muted mb-0">Project Option A: Student Feedback Sentiment Analyzer</p>
                 </div>
 
                 <div class="form-section">
