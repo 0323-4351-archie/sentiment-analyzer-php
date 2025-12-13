@@ -19,7 +19,8 @@
 ## All Links:
 
 Youtube Lnk:https://youtu.be/bJLuoixu5Fw?si=5fCkbebCU7edaaHI
-Cnava Presentation:https://www.canva.com/design/DAG6-Xu7Aj4/3LvPrJSTOyhhkvXl68o2CQ/edit?utm_content=DAG6-Xu7Aj4&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
+
+Canva Presentation:https://www.canva.com/design/DAG6-Xu7Aj4/3LvPrJSTOyhhkvXl68o2CQ/edit?utm_content=DAG6-Xu7Aj4&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
 
 
 ## 🛠️ How to Run Locally
